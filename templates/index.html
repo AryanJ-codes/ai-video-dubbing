@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Dubber</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="background-blob blob-1"></div>
+    <div class="background-blob blob-2"></div>
+
+    <div class="container">
+        <div class="glass-card">
+            <h1>AI Video Dubbing</h1>
+            <p class="subtitle">Translate and dub any YouTube video to Hindi in minutes.</p>
+
+            <div class="input-group">
+                <input type="text" id="youtube-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+                <button id="dub-btn">Dub Video</button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="status-container" class="hidden">
+                <div class="stage-label">
+                    <span id="stage-name">Processing...</span>
+                    <span id="progress-pct">0%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <p id="status-text" class="status-message">Initializing...</p>
+                <p id="eta-text" class="eta-label"></p>
+            </div>
+
+            <!-- Result Section -->
+            <div id="result-container" class="hidden">
+                <div class="success-badge">✅ Dubbing Complete!</div>
+                <video id="result-video" controls width="100%"></video>
+                <a id="download-btn" href="#" download class="secondary-btn">⬇ Download Video</a>
+            </div>
+
+            <!-- Error Section -->
+            <div id="error-container" class="hidden">
+                <p id="error-text" class="error-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('youtube-url');
+        const dubBtn = document.getElementById('dub-btn');
+        const statusContainer = document.getElementById('status-container');
+        const stageName = document.getElementById('stage-name');
+        const progressPct = document.getElementById('progress-pct');
+        const progressBar = document.getElementById('progress-bar');
+        const statusText = document.getElementById('status-text');
+        const etaText = document.getElementById('eta-text');
+        const resultContainer = document.getElementById('result-container');
+        const resultVideo = document.getElementById('result-video');
+        const downloadBtn = document.getElementById('download-btn');
+        const errorContainer = document.getElementById('error-container');
+        const errorText = document.getElementById('error-text');
+
+        let pollingInterval = null;
+
+        dubBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            // Reset UI
+            errorContainer.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            statusContainer.classList.remove('hidden');
+            dubBtn.disabled = true;
+            setProgress(0, 'Initializing', 'Sending request to server...', null);
+
+            try {
+                const response = await fetch('/api/dub', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to start job');
+                pollingInterval = setInterval(checkStatus, 2000);
+            } catch (err) {
+                showError(err.message);
+            }
+        });
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                if (data.status === 'processing') {
+                    setProgress(data.progress || 0, data.stage || 'Processing', data.message, data.eta_seconds);
+                } else if (data.status === 'completed') {
+                    clearInterval(pollingInterval);
+                    setProgress(100, 'Done', 'Finished!', 0);
+                    setTimeout(() => showSuccess(data.output_file), 600);
+                } else if (data.status === 'error') {
+                    clearInterval(pollingInterval);
+                    showError(data.message);
+                }
+            } catch (err) {
+                console.error('Error fetching status:', err);
+            }
+        }
+
+        function setProgress(pct, stage, message, etaSec) {
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = Math.round(pct) + '%';
+            stageName.textContent = stage;
+            statusText.textContent = message;
+
+            if (etaSec !== null && etaSec !== undefined && etaSec > 0) {
+                etaText.textContent = '⏱ Est. time remaining: ' + formatETA(etaSec);
+            } else if (etaSec === 0) {
+                etaText.textContent = '✅ Almost done!';
+            } else {
+                etaText.textContent = '';
+            }
+        }
+
+        function formatETA(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}m ${s}s`;
+        }
+
+        function showSuccess(filename) {
+            statusContainer.classList.add('hidden');
+            resultContainer.classList.remove('hidden');
+            dubBtn.disabled = false;
+            const videoUrl = `/outputs/${filename}?t=${Date.now()}`;
+            resultVideo.src = videoUrl;
+            downloadBtn.href = videoUrl;
+            downloadBtn.download = filename;
+        }
+
+        function showError(msg) {
+            statusContainer.classList.add('hidden');
+            errorContainer.classList.remove('hidden');
+            errorText.textContent = msg;
+            dubBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>

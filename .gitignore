@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+
+# Large model files
+*.pth
+*.ckpt
+*.pt
+
+# Output / temp data
+videos/
+audio/
+outputs/
+temp/
+pipeline.log
+
+# Wav2Lip repo (cloned at runtime)
+Wav2Lip/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
