@@ -8,13 +8,9 @@ AUDIO_DIR = BASE_DIR / "audio"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 TEMP_DIR = BASE_DIR / "temp"
 
-# WAV2LIP configurations
-WAV2LIP_DIR = BASE_DIR / "Wav2Lip"
-WAV2LIP_CHECKPOINT = WAV2LIP_DIR / "checkpoints" / "wav2lip_gan.pth"
-FACE_DETECTION_CHECKPOINT = WAV2LIP_DIR / "face_detection" / "detection" / "sfd" / "s3fd.pth"
 
 # Model configurations
-WHISPER_MODEL = "base" # Can be 'tiny', 'base', 'small', 'medium', 'large'
+WHISPER_MODEL = "tiny" # Can be 'tiny', 'base', 'small', 'medium', 'large'
 TTS_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2" # Good multi-lingual model supporting Hindi
 TARGET_LANGUAGE = "hi"
 SOURCE_LANGUAGE = "en"
