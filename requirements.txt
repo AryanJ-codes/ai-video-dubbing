@@ -2,8 +2,7 @@ yt-dlp
 ffmpeg-python==0.2.0
 openai-whisper
 deep-translator==1.11.4
-coqui-tts
-transformers==4.40.0
+edge-tts
 numpy
 scipy
 tqdm

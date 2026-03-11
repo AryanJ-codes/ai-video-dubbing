@@ -11,7 +11,6 @@ TEMP_DIR = BASE_DIR / "temp"
 
 # Model configurations
 WHISPER_MODEL = "tiny" # Can be 'tiny', 'base', 'small', 'medium', 'large'
-TTS_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2" # Good multi-lingual model supporting Hindi
 TARGET_LANGUAGE = "hi"
 SOURCE_LANGUAGE = "en"
 
