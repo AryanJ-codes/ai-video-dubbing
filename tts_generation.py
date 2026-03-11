@@ -50,8 +50,9 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
                 tmp_path = tmp_file.name
 
-            # Run async edge-tts synthesis
-            asyncio.get_event_loop().run_until_complete(
+            # Run async edge-tts synthesis (asyncio.run creates a fresh loop,
+            # safe for Flask background threads in Python 3.10+)
+            asyncio.run(
                 _synthesize_segment(text, voice, tmp_path)
             )
 
@@ -73,7 +74,7 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
 
         except Exception as e:
             logger.warning(f"Failed TTS for segment {i}: {e}")
-            logger.debug(traceback.format_exc())
+            logger.warning(traceback.format_exc())
             continue
 
         if progress_callback:
