@@ -9,8 +9,8 @@ import traceback
 
 # Map language codes to edge-tts voices
 VOICE_MAP = {
-    "hi": "hi-IN-SwaraNeural",   # Hindi female (natural)
-    "en": "en-US-JennyNeural",
+    "hi": "hi-IN-MadhurNeural",   # Hindi male (natural)
+    "en": "en-US-GuyNeural",
 }
 
 async def _synthesize_segment(text: str, voice: str, output_path: str):
@@ -39,6 +39,7 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
     output_audio_path = os.path.join(AUDIO_DIR, f"{name_without_ext}_dubbed.wav")
 
     valid_segments = [(i, seg) for i, seg in enumerate(segments) if seg.get('text', '').strip()]
+    cursor = 0  # tracks end of last placed segment to prevent overlaps
 
     for idx, (i, segment) in enumerate(valid_segments):
         text = segment['text'].strip()
@@ -61,8 +62,9 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
             wav_data, _ = librosa.load(tmp_path, sr=sample_rate, mono=True)
             os.unlink(tmp_path)
 
-            # Place on timeline at the correct start timestamp
-            start_sample = int(start_time * sample_rate)
+            # Place on timeline — use a cursor to prevent overlaps.
+            # Each segment starts at max(original timestamp, end of previous segment)
+            start_sample = max(int(start_time * sample_rate), cursor)
             end_sample = start_sample + len(wav_data)
 
             if end_sample > total_samples:
@@ -71,6 +73,7 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
                 total_samples = len(final_audio)
 
             final_audio[start_sample:end_sample] += wav_data.astype(np.float32)
+            cursor = end_sample  # advance cursor past this segment
 
         except Exception as e:
             logger.warning(f"Failed TTS for segment {i}: {e}")
