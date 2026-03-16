@@ -17,17 +17,15 @@ def run_lipsync(video_path: str, dubbed_audio_path: str) -> str:
     final_output_path = os.path.join(OUTPUTS_DIR, f"{name_without_ext}_final.mp4")
 
     try:
-        # Get durations
+        # Get durations - use shell=True to handle paths with spaces
         video_dur = subprocess.run(
-            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
-             '-of', 'default=noprintwrappers=1:nokey=1', video_path],
-            capture_output=True, text=True, check=True
+            f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{video_path}"',
+            shell=True, capture_output=True, text=True, check=True
         ).stdout.strip()
         
         audio_dur = subprocess.run(
-            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
-             '-of', 'default=noprintwrappers=1:nokey=1', dubbed_audio_path],
-            capture_output=True, text=True, check=True
+            f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{dubbed_audio_path}"',
+            shell=True, capture_output=True, text=True, check=True
         ).stdout.strip()
         
         video_duration = float(video_dur)
@@ -54,33 +52,25 @@ def run_lipsync(video_path: str, dubbed_audio_path: str) -> str:
             
             # Apply speed adjustments
             temp_video = video_path.replace('.mp4', '_speed.mp4')
-            subprocess.run([
-                'ffmpeg', '-y', '-i', video_path,
-                '-filter:v', f'setpts={1/video_speed}*PTS',
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                temp_video
-            ], capture_output=True, check=True)
+            subprocess.run(
+                f'ffmpeg -y -i "{video_path}" -filter:v setpts={1/video_speed}*PTS -c:v libx264 -preset fast -crf 23 "{temp_video}"',
+                shell=True, capture_output=True, check=True
+            )
             
             temp_audio = dubbed_audio_path.replace('.wav', '_speed.wav')
-            subprocess.run([
-                'ffmpeg', '-y', '-i', dubbed_audio_path,
-                '-filter:a', f'atempo={audio_speed}',
-                '-ar', '44100', '-ac', '2', temp_audio
-            ], capture_output=True, check=True)
+            subprocess.run(
+                f'ffmpeg -y -i "{dubbed_audio_path}" -filter:a atempo={audio_speed} -ar 44100 -ac 2 "{temp_audio}"',
+                shell=True, capture_output=True, check=True
+            )
             
             video_path = temp_video
             dubbed_audio_path = temp_audio
         
         # Merge with adjusted video/audio
-        subprocess.run([
-            'ffmpeg', '-y', '-i', video_path,
-            '-i', dubbed_audio_path,
-            '-map', '0:v:0', '-map', '1:a:0',
-            '-c:v', 'copy',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-ar', '44100', '-ac', '2',
-            final_output_path
-        ], capture_output=True, check=True)
+        subprocess.run(
+            f'ffmpeg -y -i "{video_path}" -i "{dubbed_audio_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -ar 44100 -ac 2 "{final_output_path}"',
+            shell=True, capture_output=True, check=True
+        )
         
         # Cleanup temp files
         for f in [video_path, dubbed_audio_path]:
