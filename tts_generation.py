@@ -2,7 +2,7 @@ import os
 import asyncio
 import tempfile
 import numpy as np
-import scipy.io.wavfile as wavfile
+import soundfile as sf
 from config import AUDIO_DIR, TARGET_LANGUAGE
 from utils import logger
 import traceback
@@ -110,5 +110,5 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
         final_audio = final_audio / max_val * 0.95
 
     logger.info(f"Saving combined dubbed audio to: {output_audio_path}")
-    wavfile.write(output_audio_path, sample_rate, final_audio.astype(np.int16))
+    sf.write(output_audio_path, final_audio, sample_rate)
     return output_audio_path
