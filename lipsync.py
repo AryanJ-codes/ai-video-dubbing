@@ -25,11 +25,12 @@ def run_lipsync(video_path: str, dubbed_audio_path: str) -> str:
             temp_audio
         ], capture_output=True)
 
-        # Merge with video
+        # Merge with video - use -map to explicitly select video from first input and audio from second
         subprocess.run([
             'ffmpeg', '-y', '-i', video_path,
             '-i', temp_audio,
-            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest',
+            '-map', '0:v:0', '-map', '1:a:0',
+            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
             final_output_path
         ], capture_output=True)
         
