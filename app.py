@@ -6,35 +6,43 @@ from utils import logger
 import traceback
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max
 
-# Global state for the running pipeline
 task_status = {
-    "status": "idle",   # idle | processing | completed | error
+    "status": "idle",
     "stage": "",
     "message": "",
-    "progress": 0,      # 0-100
+    "progress": 0,
     "eta_seconds": None,
     "output_file": None
 }
 
-def process_video_background(url: str):
-    global task_status
+cancel_flag = False
+
+def process_video_background(video_source: str):
+    global task_status, cancel_flag
 
     def status_updater(progress, stage, message, eta_seconds):
+        if cancel_flag:
+            raise Exception("Task cancelled by user")
         task_status["progress"] = progress
         task_status["stage"] = stage
         task_status["message"] = message
         task_status["eta_seconds"] = round(eta_seconds) if eta_seconds is not None else None
 
     try:
-        final_video_path = run_pipeline(url, status_updater=status_updater)
+        final_video_path = run_pipeline(video_source, status_updater=status_updater)
         task_status["status"] = "completed"
         task_status["progress"] = 100
         task_status["message"] = "Pipeline finished successfully!"
         task_status["output_file"] = os.path.basename(final_video_path)
     except Exception as e:
-        task_status["status"] = "error"
-        task_status["message"] = str(e)
+        if cancel_flag:
+            task_status["status"] = "cancelled"
+            task_status["message"] = "Task cancelled by user"
+        else:
+            task_status["status"] = "error"
+            task_status["message"] = str(e)
         logger.error(f"Background task failed: {e}")
         logger.debug(traceback.format_exc())
 
@@ -44,17 +52,27 @@ def index():
 
 @app.route("/api/dub", methods=["POST"])
 def dub_video():
-    global task_status
-    data = request.json
-    url = data.get("url")
+    global task_status, cancel_flag
     
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
+    video_path = None
+    
+    # Check for file upload
+    if 'file' in request.files:
+        file = request.files['file']
+        if file.filename:
+            video_path = os.path.join('videos', file.filename)
+            file.save(video_path)
+    
+    # Check for URL
+    url = request.form.get("url") or (request.json.get("url") if request.is_json else None)
+    
+    if not video_path and not url:
+        return jsonify({"error": "No video file or URL provided"}), 400
         
     if task_status["status"] == "processing":
         return jsonify({"error": "A job is already running! Please wait for it to finish."}), 429
-        
-    # Reset status
+    
+    cancel_flag = False
     task_status = {
         "status": "processing",
         "stage": "Initializing",
@@ -64,17 +82,28 @@ def dub_video():
         "output_file": None
     }
     
-    # Start background thread
-    t = threading.Thread(target=process_video_background, args=(url,))
+    video_source = video_path if video_path else url
+    t = threading.Thread(target=process_video_background, args=(video_source,))
     t.daemon = True
     t.start()
     
     return jsonify({"message": "Job started", "status": "processing"})
 
+@app.route("/api/stop", methods=["POST"])
+def stop_task():
+    global task_status, cancel_flag
+    if task_status["status"] != "processing":
+        return jsonify({"error": "No task running"}), 400
+    
+    cancel_flag = True
+    task_status["message"] = "Stopping..."
+    
+    return jsonify({"message": "Stopping task..."})
+
 @app.route("/api/status", methods=["GET"])
 def get_status():
     global task_status
-    return jsonify(task_status)
+    return jsonify(task_status.copy())
 
 @app.route("/outputs/<filename>")
 def get_output(filename):

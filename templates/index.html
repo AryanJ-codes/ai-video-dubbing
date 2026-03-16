@@ -14,10 +14,31 @@
     <div class="container">
         <div class="glass-card">
             <h1>AI Video Dubbing</h1>
-            <p class="subtitle">Translate and dub any YouTube video to Hindi in minutes.</p>
+            <p class="subtitle">Translate and dub any video to Hindi in minutes.</p>
 
-            <div class="input-group">
-                <input type="text" id="youtube-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+            <div class="input-section">
+                <div class="input-tabs">
+                    <button class="tab-btn active" data-tab="url">YouTube URL</button>
+                    <button class="tab-btn" data-tab="file">Upload Video</button>
+                </div>
+                
+                <div class="tab-content active" id="url-tab">
+                    <div class="input-group">
+                        <input type="text" id="youtube-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="file-tab">
+                    <div class="file-upload-area" id="drop-zone">
+                        <input type="file" id="video-file" accept="video/*" hidden>
+                        <div class="file-upload-content" id="file-upload-content">
+                            <span class="upload-icon">📁</span>
+                            <p>Click to select or drag video here</p>
+                            <p class="file-name" id="file-name"></p>
+                        </div>
+                    </div>
+                </div>
+                
                 <button id="dub-btn">Dub Video</button>
             </div>
 
@@ -32,6 +53,7 @@
                 </div>
                 <p id="status-text" class="status-message">Initializing...</p>
                 <p id="eta-text" class="eta-label"></p>
+                <button id="stop-btn" class="danger-btn">Stop</button>
             </div>
 
             <!-- Result Section -->
@@ -50,6 +72,10 @@
 
     <script>
         const urlInput = document.getElementById('youtube-url');
+        const videoFileInput = document.getElementById('video-file');
+        const fileNameDisplay = document.getElementById('file-name');
+        const dropZone = document.getElementById('drop-zone');
+        const fileUploadContent = document.getElementById('file-upload-content');
         const dubBtn = document.getElementById('dub-btn');
         const statusContainer = document.getElementById('status-container');
         const stageName = document.getElementById('stage-name');
@@ -62,31 +88,95 @@
         const downloadBtn = document.getElementById('download-btn');
         const errorContainer = document.getElementById('error-container');
         const errorText = document.getElementById('error-text');
+        const stopBtn = document.getElementById('stop-btn');
+        const tabBtns = document.querySelectorAll('.tab-btn');
 
         let pollingInterval = null;
+        let selectedFile = null;
+        let activeTab = 'url';
+
+        // Tab switching
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeTab = btn.dataset.tab;
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(`${activeTab}-tab`).classList.add('active');
+            });
+        });
+
+        // File upload
+        dropZone.addEventListener('click', () => videoFileInput.click());
+        
+        videoFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                fileNameDisplay.textContent = selectedFile.name;
+                fileUploadContent.innerHTML = `<span class="upload-icon">✅</span><p>Selected:</p><p class="file-name">${selectedFile.name}</p>`;
+            }
+        });
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                selectedFile = e.dataTransfer.files[0];
+                fileNameDisplay.textContent = selectedFile.name;
+                fileUploadContent.innerHTML = `<span class="upload-icon">✅</span><p>Selected:</p><p class="file-name">${selectedFile.name}</p>`;
+            }
+        });
 
         dubBtn.addEventListener('click', async () => {
-            const url = urlInput.value.trim();
-            if (!url) return;
+            let formData = new FormData();
+            
+            if (activeTab === 'url') {
+                const url = urlInput.value.trim();
+                if (!url) return;
+                formData.append('url', url);
+            } else {
+                if (!selectedFile) return;
+                formData.append('file', selectedFile);
+            }
 
             // Reset UI
             errorContainer.classList.add('hidden');
             resultContainer.classList.add('hidden');
             statusContainer.classList.remove('hidden');
             dubBtn.disabled = true;
+            stopBtn.disabled = false;
             setProgress(0, 'Initializing', 'Sending request to server...', null);
 
             try {
                 const response = await fetch('/api/dub', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
+                    body: formData
                 });
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Failed to start job');
                 pollingInterval = setInterval(checkStatus, 2000);
             } catch (err) {
                 showError(err.message);
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping...';
+            try {
+                await fetch('/api/stop', { method: 'POST' });
+            } catch (err) {
+                console.error('Error stopping task:', err);
             }
         });
 
@@ -101,9 +191,13 @@
                     clearInterval(pollingInterval);
                     setProgress(100, 'Done', 'Finished!', 0);
                     setTimeout(() => showSuccess(data.output_file), 600);
-                } else if (data.status === 'error') {
+                } else if (data.status === 'error' || data.status === 'cancelled') {
                     clearInterval(pollingInterval);
-                    showError(data.message);
+                    if (data.status === 'cancelled') {
+                        showCancelled();
+                    } else {
+                        showError(data.message);
+                    }
                 }
             } catch (err) {
                 console.error('Error fetching status:', err);
@@ -146,6 +240,13 @@
             statusContainer.classList.add('hidden');
             errorContainer.classList.remove('hidden');
             errorText.textContent = msg;
+            dubBtn.disabled = false;
+        }
+
+        function showCancelled() {
+            statusContainer.classList.add('hidden');
+            errorContainer.classList.remove('hidden');
+            errorText.textContent = "Task was cancelled.";
             dubBtn.disabled = false;
         }
     </script>

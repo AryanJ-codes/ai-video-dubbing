@@ -21,8 +21,10 @@ def get_video_duration(video_path: str) -> float:
         logger.warning(f"Failed to extract video duration. Defaulting to 1000s. {e}")
         return 1000.0
 
-def run_pipeline(url: str, status_updater=None):
+def run_pipeline(video_source: str, status_updater=None):
     """
+    Main dubbing pipeline.
+    video_source: YouTube URL or local video file path
     status_updater(progress: float 0-100, stage: str, message: str, eta_seconds: float | None)
     """
     pipeline_start = time.time()
@@ -40,11 +42,26 @@ def run_pipeline(url: str, status_updater=None):
     try:
         initialize_project_environment()
 
-        # Stage 1 – Download (0 → 10%)
-        update(2, "Downloading", "Downloading video from YouTube...")
-        video_path = download_youtube_video(url)
+        # Check if input is URL or local file
+        is_url = video_source.startswith('http://') or video_source.startswith('https://')
+        
+        if is_url:
+            # Stage 1 – Download (0 → 10%)
+            update(2, "Downloading", "Downloading video from YouTube...")
+            video_path = download_youtube_video(video_source)
+        else:
+            # Local file - just load it
+            update(2, "Loading", f"Loading local video: {video_path}")
+            video_path = video_source
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Video file not found: {video_path}")
+        
         video_duration = get_video_duration(video_path)
-        update(10, "Downloading", "Video downloaded successfully.")
+        
+        if is_url:
+            update(10, "Downloading", "Video downloaded successfully.")
+        else:
+            update(10, "Loading", "Video loaded successfully.")
 
         # Stage 2 – Audio extraction (10 → 15%)
         update(12, "Extracting Audio", "Extracting audio track from video...")
