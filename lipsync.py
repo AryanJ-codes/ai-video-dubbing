@@ -18,23 +18,30 @@ def run_lipsync(video_path: str, dubbed_audio_path: str) -> str:
 
     try:
         # Get durations - use shell=True to handle paths with spaces
-        video_dur = subprocess.run(
-            f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{video_path}"',
-            shell=True, capture_output=True, text=True, check=True
-        ).stdout.strip()
+        try:
+            video_dur = subprocess.run(
+                f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{video_path}"',
+                shell=True, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            video_duration = float(video_dur)
+        except:
+            video_duration = None
+            logger.warning("Could not get video duration, skipping speed adjustment")
         
-        audio_dur = subprocess.run(
-            f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{dubbed_audio_path}"',
-            shell=True, capture_output=True, text=True, check=True
-        ).stdout.strip()
+        try:
+            audio_dur = subprocess.run(
+                f'ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "{dubbed_audio_path}"',
+                shell=True, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            audio_duration = float(audio_dur)
+        except:
+            audio_duration = None
         
-        video_duration = float(video_dur)
-        audio_duration = float(audio_dur)
+        if video_duration and audio_duration:
+            logger.info(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
         
-        logger.info(f"Video duration: {video_duration:.2f}s, Audio duration: {audio_duration:.2f}s")
-        
-        # Calculate speed adjustment if audio is longer
-        if audio_duration > video_duration:
+        # Calculate speed adjustment if audio is longer and we have both durations
+        if video_duration and audio_duration and audio_duration > video_duration:
             # Scale factor to fit audio without cutting
             # Speed up video by (audio/video) and slow down audio by same factor
             scale_factor = audio_duration / video_duration
