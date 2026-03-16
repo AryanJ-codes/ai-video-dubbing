@@ -45,23 +45,18 @@ def run_pipeline(video_source: str, status_updater=None):
         # Check if input is URL or local file
         is_url = video_source.startswith('http://') or video_source.startswith('https://')
         
+        # Stage 1 – Download or Load
         if is_url:
-            # Stage 1 – Download (0 → 10%)
             update(2, "Downloading", "Downloading video from YouTube...")
             video_path = download_youtube_video(video_source)
         else:
-            # Local file - just load it
-            update(2, "Loading", f"Loading local video: {video_path}")
+            update(2, "Loading", f"Loading local video...")
             video_path = video_source
             if not os.path.exists(video_path):
                 raise FileNotFoundError(f"Video file not found: {video_path}")
-        
-        video_duration = get_video_duration(video_path)
-        
-        if is_url:
-            update(10, "Downloading", "Video downloaded successfully.")
-        else:
             update(10, "Loading", "Video loaded successfully.")
+
+        video_duration = get_video_duration(video_path)
 
         # Stage 2 – Audio extraction (10 → 15%)
         update(12, "Extracting Audio", "Extracting audio track from video...")

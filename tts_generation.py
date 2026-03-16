@@ -20,14 +20,32 @@ async def _synthesize_segment(text: str, voice: str, output_path: str):
     await communicate.save(output_path)
 
 
+def _time_stretch(wav: np.ndarray, target_length: int) -> np.ndarray:
+    """Stretch or compress audio to match target length using librosa."""
+    import librosa
+    current_length = len(wav)
+    if current_length == target_length:
+        return wav
+    if current_length > target_length:
+        return wav[:target_length]
+    # Stretch to target length
+    stretched = librosa.resample(wav, orig_sr=len(wav), target_sr=target_length)
+    if len(stretched) > target_length:
+        stretched = stretched[:target_length]
+    elif len(stretched) < target_length:
+        padding = np.zeros(target_length - len(stretched))
+        stretched = np.concatenate([stretched, padding])
+    return stretched
+
+
 def generate_dubbed_audio(segments: list, original_audio_path: str,
                            video_duration_sec: float, progress_callback=None) -> str:
     """
     Generates Hindi TTS for each segment using edge-tts and places them
     on a shared audio timeline matching the original timestamps.
-    Returns path to the combined dubbed WAV file.
+    Time-stretches each segment to fit exactly within its time window.
     """
-    voice = VOICE_MAP.get(TARGET_LANGUAGE, "hi-IN-SwaraNeural")
+    voice = VOICE_MAP.get(TARGET_LANGUAGE, "hi-IN-MadhurNeural")
     logger.info(f"Using edge-tts voice: {voice}")
 
     sample_rate = 24000
@@ -39,20 +57,22 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
     output_audio_path = os.path.join(AUDIO_DIR, f"{name_without_ext}_dubbed.wav")
 
     valid_segments = [(i, seg) for i, seg in enumerate(segments) if seg.get('text', '').strip()]
-    cursor = 0  # tracks end of last placed segment to prevent overlaps
 
     for idx, (i, segment) in enumerate(valid_segments):
         text = segment['text'].strip()
         start_time = segment['start']
-
-        logger.info(f"Generating TTS for segment {i}: '{text[:60]}...' " if len(text) > 60 else f"Generating TTS for segment {i}: '{text}'")
+        end_time = segment.get('end', start_time + 3.0)
+        
+        # Calculate target duration (original segment duration)
+        target_duration = end_time - start_time
+        target_samples = int(target_duration * sample_rate)
+        
+        logger.info(f"Segment {i}: [{start_time:.2f}s→{end_time:.2f}s] ({target_duration:.2f}s) '{text[:50]}...'")
 
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
                 tmp_path = tmp_file.name
 
-            # Run async edge-tts synthesis (asyncio.run creates a fresh loop,
-            # safe for Flask background threads in Python 3.10+)
             asyncio.run(
                 _synthesize_segment(text, voice, tmp_path)
             )
@@ -61,19 +81,19 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
             import librosa
             wav_data, _ = librosa.load(tmp_path, sr=sample_rate, mono=True)
             os.unlink(tmp_path)
+            
+            # Time-stretch to fit exactly within the segment duration
+            wav_stretched = _time_stretch(wav_data, target_samples)
+            
+            # Place on timeline at the original timestamp
+            start_sample = int(start_time * sample_rate)
+            end_sample = start_sample + len(wav_stretched)
 
-            # Place on timeline — use a cursor to prevent overlaps.
-            # Each segment starts at max(original timestamp, end of previous segment)
-            start_sample = max(int(start_time * sample_rate), cursor)
-            end_sample = start_sample + len(wav_data)
+            if end_sample > len(final_audio):
+                padding = np.zeros(end_sample - len(final_audio), dtype=np.float32)
+                final_audio = np.concatenate([final_audio, padding])
 
-            if end_sample > total_samples:
-                padding = np.zeros(end_sample - total_samples, dtype=np.float32)
-                final_audio = np.concatenate((final_audio, padding))
-                total_samples = len(final_audio)
-
-            final_audio[start_sample:end_sample] += wav_data.astype(np.float32)
-            cursor = end_sample  # advance cursor past this segment
+            final_audio[start_sample:end_sample] += wav_stretched.astype(np.float32)
 
         except Exception as e:
             logger.warning(f"Failed TTS for segment {i}: {e}")
@@ -82,13 +102,13 @@ def generate_dubbed_audio(segments: list, original_audio_path: str,
 
         if progress_callback:
             progress_callback((idx + 1) / len(valid_segments),
-                              f"Generated TTS for {idx + 1}/{len(valid_segments)} segments.")
+                              f"Generated TTS for {idx + 1}/{len(valid_segments)} segments")
 
     # Normalize to avoid clipping
     max_val = np.max(np.abs(final_audio))
     if max_val > 0:
-        final_audio = final_audio / max_val
+        final_audio = final_audio / max_val * 0.95
 
     logger.info(f"Saving combined dubbed audio to: {output_audio_path}")
-    wavfile.write(output_audio_path, sample_rate, final_audio)
+    wavfile.write(output_audio_path, sample_rate, final_audio.astype(np.int16))
     return output_audio_path
