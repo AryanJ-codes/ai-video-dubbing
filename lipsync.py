@@ -16,27 +16,16 @@ def run_lipsync(video_path: str, dubbed_audio_path: str) -> str:
     final_output_path = os.path.join(OUTPUTS_DIR, f"{name_without_ext}_final.mp4")
 
     try:
-        # Convert audio to stereo 44100Hz AAC first
-        temp_audio = dubbed_audio_path.replace('.wav', '_converted.aac')
-        
-        subprocess.run([
-            'ffmpeg', '-y', '-i', dubbed_audio_path,
-            '-ar', '44100', '-ac', '2', '-c:a', 'aac', '-b:a', '192k',
-            temp_audio
-        ], capture_output=True)
-
-        # Merge with video - use -map to explicitly select video from first input and audio from second
+        # Merge with video - don't use shortest, use the dubbed audio duration
         subprocess.run([
             'ffmpeg', '-y', '-i', video_path,
-            '-i', temp_audio,
+            '-i', dubbed_audio_path,
             '-map', '0:v:0', '-map', '1:a:0',
-            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-ar', '44100', '-ac', '2',
             final_output_path
-        ], capture_output=True)
-        
-        # Cleanup temp
-        if os.path.exists(temp_audio):
-            os.remove(temp_audio)
+        ], capture_output=True, check=True)
 
         logger.info(f"Video merged successfully! Final dubbed video saved to: {final_output_path}")
         return final_output_path
